@@ -1,0 +1,68 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"location": {
+			"type": "string",
+			"defaultValue": "[resourceGroup().location]",
+			"metadata": {
+				"description": "Azure region"
+			}
+		},
+		"vnetName": {
+			"type": "string",
+			"defaultValue": ""
+		},
+		"vnetPrefix": {
+			"type": "string",
+			"defaultValue": ""
+		},
+		"enableDdosProtection": {
+			"type": "bool",
+			"defaultValue": false
+		},
+		"ddosProtectionPlanResourceGroup": {
+			"type": "string",
+			"defaultValue": ""
+		},
+		"ddosProtectionPlanName": {
+			"type": "string",
+			"defaultValue": ""
+		},
+		"enableVmProtection": {
+			"type": "bool",
+			"defaultValue": false
+		}
+	},
+	"variables": {
+		"apiVersionVnet": "2020-11-01"
+	},
+	"resources": [
+		{
+			"type": "Microsoft.Network/virtualNetworks",
+			"apiVersion": "[variables('apiVersionVnet')]",
+			"name": "[parameters('vnetName')]",
+			"location": "[parameters('location')]",
+			"properties": {
+				"addressSpace": {
+					"addressPrefixes": [
+						"[parameters('vnetPrefix')]"
+					]
+				},
+				"dhcpOptions": {
+					"dnsServers": []
+				},
+				"enableDdosProtection": "[parameters('enableDdosProtection')]",
+                "ddosProtectionPlan":"[
+					if
+					(
+						or(not(parameters('enableDdosProtection')), empty(trim(parameters('ddosProtectionPlanResourceGroup'))), empty(trim(parameters('ddosProtectionPlanName')))),
+						json('null'),
+						createObject('id', resourceId(parameters('ddosProtectionPlanResourceGroup'), 'Microsoft.Network/ddosProtectionPlans', parameters('ddosProtectionPlanName')))
+					)
+				]",
+				"enableVmProtection": "[parameters('enableVmProtection')]"
+			}
+		}
+	]
+}
