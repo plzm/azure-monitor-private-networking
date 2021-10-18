@@ -34,25 +34,31 @@ if (!$tenantId -or !$subscriptionId) {
 
 # ##################################################
 
-# Monitoring Resources
+# General
 
 [string[]] $locations = @("eastus2", "westus2")
+
+# ##################################################
+
+# Monitoring Resources
+
 [string] $publicIngest = "Enabled"
 [string] $publicQuery = "Enabled"
 [string[]] $appISuffixes = @("1", "2" )
+
+$locationWorkspaces = @{}
 
 $locations | ForEach-Object {
   $location = $_
 
   # Resource Group
-  [string] $rgName = "azmon-${location}"
+  [string] $rgName = "poc-azmon-${location}"
   az group create --subscription $subscriptionId -l $location -n $rgName --verbose
 
   # Log Analytics Workspace and Diagnostics
   [string] $workspaceName = "la-${location}"
 
   New-LogAnalyticsWorkspace `
-  -deploymentName $workspaceName `
   -subscriptionId $subscriptionId `
   -resourceGroupName $rgName `
   -location $location `
@@ -62,8 +68,9 @@ $locations | ForEach-Object {
 
   $workspaceId = (az monitor log-analytics workspace show --subscription $subscriptionId -g $rgName -n $workspaceName -o tsv --query 'id')
 
+  $locationWorkspaces.Add($location, $workspaceId)
+
   New-LogAnalyticsWorkspaceDiagnostics `
-  -deploymentName "${workspaceName}-diag" `
   -subscriptionId $subscriptionId `
   -resourceGroupName $rgName `
   -workspaceName $workspaceName `
@@ -74,7 +81,6 @@ $locations | ForEach-Object {
     [string] $appIName = "appi-${location}-${_}"
 
     New-AppInsights `
-    -deploymentName $appIName `
     -subscriptionId $subscriptionId `
     -resourceGroupName $rgName `
     -location $location `
@@ -84,7 +90,6 @@ $locations | ForEach-Object {
     -publicNetworkAccessForQuery $publicQuery
   
     New-AppInsightsDiagnostics `
-    -deploymentName "${appIName}-diag" `
     -subscriptionId $subscriptionId `
     -resourceGroupName $rgName `
     -appInsightsName $appIName `
@@ -92,4 +97,79 @@ $locations | ForEach-Object {
   }
 }
 
+# ##################################################
 
+# Networking
+
+[int] $vnetPrefix = 11
+[int] $numOfVnetsPerRegion = 2
+[int] $numOfSubnetsPerVnet = 2
+[string] $vnetSuffix = "0.0.0/16"
+[string] $subnetSuffix = "0/24"
+[string] $privateEndpointNetworkPolicies = "Enabled"
+[string] $privateLinkServiceNetworkPolicies = "Enabled"
+[string] $nsgRuleInbound100Src = "75.68.47.183"
+
+$locations | ForEach-Object {
+  $location = $_
+
+  $workspaceId = $locationWorkspaces[$location]
+
+  # Resource Group
+  [string] $rgName = "poc-net-${location}"
+
+  az group create --subscription $subscriptionId -l $location -n $rgName --verbose
+
+  # NSG
+  [string] $nsgName = "nsg-${location}"
+
+  New-Nsg `
+  -subscriptionId $subscriptionId `
+  -resourceGroupName $rgName `
+  -location $location `
+  -nsgName $nsgName `
+  -nsgRuleInbound100Src $nsgRuleInbound100Src
+
+  New-NsgDiagnostics `
+  -subscriptionId $subscriptionId `
+  -resourceGroupName $rgName `
+  -nsgName $nsgName `
+  -logAnalyticsWorkspaceResourceId $workspaceId
+
+  For ($i = 1; $i -le $numOfVnetsPerRegion; $i++) {
+    $vnetName = "vnet-${location}-${vnetPrefix}"
+
+    New-VNet `
+    -subscriptionId $subscriptionId `
+    -resourceGroupName $rgName `
+    -location $location `
+    -vnetName $vnetName `
+    -vnetPrefix "${vnetPrefix}.${vnetSuffix}"
+  
+    New-VNetDiagnostics `
+    -subscriptionId $subscriptionId `
+    -resourceGroupName $rgName `
+    -vnetName $vnetName `
+    -logAnalyticsWorkspaceResourceId $workspaceId
+
+    For ($i = 1; $i -le $numOfSubnetsPerVnet; $i++) {
+      $subnetName = "subnet${i}"
+      $subnetPrefix = "${vnetPrefix}.0.${i}.${subnetSuffix}"
+
+      New-Subnet `
+      -subscriptionId $subscriptionId `
+      -resourceGroupName $rgName `
+      -vnetName $vnetName `
+      -subnetName $subnetName `
+      -subnetPrefix $subnetPrefix `
+      -nsgResourceGroup $rgName `
+      -nsgName $nsgName `
+      -serviceEndpoints $null `
+      -delegationService $null `
+      -privateEndpointNetworkPolicies $privateEndpointNetworkPolicies `
+      -privateLinkServiceNetworkPolicies $privateLinkServiceNetworkPolicies
+    }
+
+    $vnetPrefix++
+  }
+}
