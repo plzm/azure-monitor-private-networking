@@ -54,6 +54,21 @@ function New-LogAnalyticsWorkspaceDiagnostics {
       logAnalyticsWorkspaceResourceId=$logAnalyticsWorkspaceResourceId
 }
 
+function Get-LogAnalyticsWorkspace {
+  param
+  (
+    [string] $subscriptionId,
+    [string] $resourceGroupName,
+    [string] $workspaceName
+  )
+
+  Write-Host "Get-LogAnalyticsWorkspace"
+
+  $workspace = (az monitor log-analytics workspace show --subscription $subscriptionId -g $resourceGroupName -n $workspaceName) | ConvertFrom-Json
+
+  return $workspace
+}
+
 function New-AppInsights {
   param
   (
@@ -104,6 +119,21 @@ function New-AppInsightsDiagnostics {
 	  --parameters `
     appInsightsName=$appInsightsName `
     logAnalyticsWorkspaceResourceId=$logAnalyticsWorkspaceResourceId
+}
+
+function Get-AppInsights {
+  param
+  (
+    [string] $subscriptionId,
+    [string] $resourceGroupName,
+    [string] $appInsightsName
+  )
+
+  Write-Host "Get-AppInsights"
+
+  $appInsights = az monitor app-insights component show --subscription $subscriptionId -g $resourceGroupName -a $appInsightsName | ConvertFrom-Json
+
+  return $appInsights
 }
 
 function New-VNet {
